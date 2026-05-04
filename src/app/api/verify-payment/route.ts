@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { supabase, supabaseConfigured } from '@/lib/supabase'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2023-08-16',
-})
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY
+const stripe = stripeSecretKey
+  ? new Stripe(stripeSecretKey, {
+      apiVersion: '2023-08-16',
+    })
+  : null
 
 const missingConfigResponse = NextResponse.json(
   { error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.' },
@@ -13,8 +16,17 @@ const missingConfigResponse = NextResponse.json(
 
 export async function POST(request: NextRequest) {
   if (!supabaseConfigured || !supabase) return missingConfigResponse
+  if (!stripe) {
+    return NextResponse.json(
+      { error: 'Stripe is not configured. Set STRIPE_SECRET_KEY.' },
+      { status: 500 }
+    )
+  }
 
   const { stripe_payment_id } = await request.json()
+  if (!stripe_payment_id || typeof stripe_payment_id !== 'string') {
+    return NextResponse.json({ error: 'stripe_payment_id is required.' }, { status: 400 })
+  }
 
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(stripe_payment_id)

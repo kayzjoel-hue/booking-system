@@ -1,8 +1,8 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import { supabase, supabaseConfigured } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { supabase, supabaseConfigured } from '@/lib/supabase'
 
 interface Service {
   id: string
@@ -15,32 +15,43 @@ const DEFAULT_SERVICES: Service[] = [
   { id: 'interview-prep', name: 'Interview Prep', price: 100 },
 ]
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    const message = record.message || record.msg || record.error_description
+    if (typeof message === 'string') return message
+  }
+  return String(error)
+}
+
+function ConfigRequired() {
+  return (
+    <main className="kx-shell">
+      <section className="kx-card mx-auto mt-20 max-w-xl">
+        <p className="kx-eyebrow">Configuration Required</p>
+        <h1 className="mt-3 text-3xl">Supabase is not connected.</h1>
+        <p className="kx-copy mt-4">
+          Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local before taking bookings.
+        </p>
+      </section>
+    </main>
+  )
+}
+
 export default function Home() {
   const [services, setServices] = useState<Service[]>(DEFAULT_SERVICES)
   const [loading, setLoading] = useState(false)
   const [serviceLoading, setServiceLoading] = useState(true)
   const router = useRouter()
 
-  if (!supabaseConfigured) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="bg-white p-8 rounded shadow-md w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-4">Configuration Required</h1>
-          <p className="text-gray-700 mb-4">
-            Supabase is not configured. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in <code>.env.local</code>.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   useEffect(() => {
     async function fetchServices() {
       if (!supabaseConfigured) {
-        setServices(DEFAULT_SERVICES)
         setServiceLoading(false)
         return
       }
+
       try {
         const { data, error } = await supabase?.from('services').select('*') || { data: null, error: null }
         if (error || !data || data.length === 0) {
@@ -50,102 +61,119 @@ export default function Home() {
           setServices(data)
         }
       } catch (err) {
-        try {
-          console.error('Error loading services:', err)
-          console.error('Error loading services (stringified):', JSON.stringify(err))
-        } catch (e) {
-          console.error('Error loading services and failed to stringify error', err)
-        }
+        console.error('Error loading services:', getErrorMessage(err))
         setServices(DEFAULT_SERVICES)
       } finally {
         setServiceLoading(false)
       }
     }
+
     fetchServices()
   }, [])
 
   async function captureLead(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
-    const name = formData.get('name') as string
-    const email = formData.get('email') as string
-    const service_id = formData.get('service') as string
+    const name = String(formData.get('name') || '').trim()
+    const email = String(formData.get('email') || '').trim()
+    const serviceId = String(formData.get('service') || '')
 
-    if (!supabaseConfigured) {
+    if (!supabaseConfigured || !supabase) {
       alert('Supabase is not configured. Please update your environment variables.')
       return
     }
 
     setLoading(true)
     try {
-      const { data: user, error } = await supabase!
+      const { data: user, error } = await supabase
         .from('profiles')
         .insert([{ name, email }])
         .select()
         .single()
 
-      console.log('captureLead response user:', user)
-      console.log('captureLead response error:', error)
       if (error) throw error
-      if (!user || !user.id) {
-        throw new Error('Supabase returned no user id')
-      }
+      if (!user?.id) throw new Error('Supabase returned no user id')
 
-      localStorage.setItem('user_id', user.id)
-      localStorage.setItem('selected_service_id', service_id)
-
-      router.push('/book')
+      const params = new URLSearchParams({
+        user_id: user.id,
+        service_id: serviceId,
+      })
+      router.push(`/book?${params.toString()}`)
     } catch (err) {
-      // Improved error logging for easier debugging in dev
-      try {
-        console.error('captureLead error:', err)
-        console.dir(err, { depth: null })
-        console.error('captureLead error (stringified):', JSON.stringify(err, Object.getOwnPropertyNames(err)))
-        console.error('captureLead error keys:', Object.keys(err || {}))
-        console.error('captureLead error own keys:', Object.getOwnPropertyNames(err || {}))
-      } catch (e) {
-        console.error('captureLead error, and failed to stringify:', err)
-      }
-
-      const message =
-        (err && typeof err === 'object' ? (err as any).message || (err as any).msg || (err as any).error_description : null) ||
-        JSON.stringify(err, Object.getOwnPropertyNames(err || {})) ||
-        String(err)
+      const message = getErrorMessage(err)
+      console.error('captureLead error:', message)
       alert(`Something went wrong. ${message}`)
     } finally {
       setLoading(false)
     }
   }
 
+  if (!supabaseConfigured) return <ConfigRequired />
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-4">Get Your Hospitality CV Fixed – Land Your Dream Job in Dubai</h1>
-        <form onSubmit={captureLead}>
-          <div className="mb-4">
-            <label className="block text-gray-700">Name</label>
-            <input type="text" name="name" className="w-full p-2 border border-gray-300 rounded" required />
+    <main className="kx-shell">
+      <div className="kx-grid">
+        <section className="kx-hero">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="kx-mark">KX</div>
+              <div>
+                <p className="kx-eyebrow">Kaizrug Career Desk</p>
+                <p className="text-sm text-[var(--muted)]">Dubai hospitality booking engine</p>
+              </div>
+            </div>
+            <h1 className="kx-title">Turn a rough CV into a booked interview path.</h1>
+            <p className="kx-copy">
+              A tight, paid consultation flow for hospitality workers who need clear positioning,
+              better documents, and practical next steps without motivational fog.
+            </p>
           </div>
-          <div className="mb-4">
-            <label className="block text-gray-700">Email</label>
-            <input type="email" name="email" className="w-full p-2 border border-gray-300 rounded" required />
+
+          <div className="kx-proof">
+            <div className="kx-proof-item">
+              <span className="kx-number">01</span>
+              <p className="kx-stat-label">Pick the service</p>
+            </div>
+            <div className="kx-proof-item">
+              <span className="kx-number">02</span>
+              <p className="kx-stat-label">Book the session</p>
+            </div>
+            <div className="kx-proof-item">
+              <span className="kx-number">03</span>
+              <p className="kx-stat-label">Pay and execute</p>
+            </div>
           </div>
-          <div className="mb-4">
-            <label className="block text-gray-700">Service</label>
-            <select name="service" className="w-full p-2 border border-gray-300 rounded" required disabled={serviceLoading}>
-              <option value="">Select a service</option>
-              {services.map(service => (
-                <option key={service.id} value={service.id}>
-                  {service.name} ({service.price} AED)
-                </option>
-              ))}
-            </select>
-          </div>
-          <button type="submit" disabled={loading || serviceLoading} className="w-full bg-blue-500 text-white p-3 rounded text-lg">
-            {loading ? 'Submitting...' : serviceLoading ? 'Loading services...' : 'Book a Paid Session Now'}
-          </button>
-        </form>
+        </section>
+
+        <aside className="kx-card">
+          <p className="kx-eyebrow">Paid Session Intake</p>
+          <h2 className="mt-3 text-3xl leading-tight">Start with the offer that matches the pressure.</h2>
+          <form className="kx-form mt-7" onSubmit={captureLead}>
+            <label className="kx-field">
+              <span className="kx-label">Name</span>
+              <input className="kx-input" type="text" name="name" required />
+            </label>
+            <label className="kx-field">
+              <span className="kx-label">Email</span>
+              <input className="kx-input" type="email" name="email" required />
+            </label>
+            <label className="kx-field">
+              <span className="kx-label">Service</span>
+              <select className="kx-input" name="service" required disabled={serviceLoading}>
+                <option value="">Select a service</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name} - {service.price} AED
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="kx-button" type="submit" disabled={loading || serviceLoading}>
+              {loading ? 'Securing lead...' : serviceLoading ? 'Loading services...' : 'Book a Paid Session'}
+            </button>
+          </form>
+        </aside>
       </div>
-    </div>
+    </main>
   )
 }

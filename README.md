@@ -1,3 +1,24 @@
+Kaizrug Booking System
+
+Production path: deploy this app to Vercel as the booking and payment engine.
+
+Required environment variables:
+
+- NEXT_PUBLIC_SUPABASE_URL
+- NEXT_PUBLIC_SUPABASE_ANON_KEY
+- NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+- STRIPE_SECRET_KEY
+- ADMIN_API_TOKEN
+
+Database tables expected by the app:
+
+- profiles
+- services
+- bookings
+- payments
+
+Note: the current Supabase URL in `.env.local` did not resolve during local testing, so live table verification and full payment-flow testing require a valid Supabase project URL first.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

@@ -7,8 +7,14 @@ interface Booking {
   id: string
   date: string
   status: string
-  services: { name: string }
+  services: { name: string } | { name: string }[]
   created_at: string
+}
+
+interface Payment {
+  amount: number
+  status: string
+  booking_id: string
 }
 
 interface PendingPayment {
@@ -18,95 +24,135 @@ interface PendingPayment {
   bookings: Booking
 }
 
+function serviceName(booking?: Booking) {
+  const services = booking?.services
+  if (!services) return 'Unassigned service'
+  return Array.isArray(services) ? services[0]?.name || 'Unassigned service' : services.name
+}
+
 export default function Dashboard() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [revenue, setRevenue] = useState(0)
-  const [totalBookings, setTotalBookings] = useState(0)
   const [paidBookings, setPaidBookings] = useState(0)
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([])
   const [noShow, setNoShow] = useState<Booking[]>([])
 
   useEffect(() => {
     async function fetchData() {
-      if (!supabaseConfigured) {
-        return
-      }
-      const { data: bookingsData } = await supabase!
+      if (!supabaseConfigured || !supabase) return
+
+      const { data: bookingsData } = await supabase
         .from('bookings')
         .select('*, services(*)')
         .order('created_at', { ascending: false }) || { data: null }
-      setBookings(bookingsData || [])
-      setTotalBookings(bookingsData?.length || 0)
+      const normalizedBookings = (bookingsData || []) as Booking[]
+      setBookings(normalizedBookings)
 
-      const { data: payments } = await supabase!
+      const { data: payments } = await supabase
         .from('payments')
         .select('amount, status, booking_id')
         .eq('status', 'completed')
-      const totalRev = payments?.reduce((sum, p) => sum + p.amount, 0) || 0
-      setRevenue(totalRev)
-      setPaidBookings(payments?.length || 0)
+      const completedPayments = (payments || []) as Payment[]
+      setRevenue(completedPayments.reduce((sum, payment) => sum + payment.amount, 0))
+      setPaidBookings(completedPayments.length)
 
-      const { data: pending } = await supabase!
+      const { data: pending } = await supabase
         .from('payments')
         .select('*, bookings(*)')
         .eq('status', 'pending')
-      setPendingPayments(pending || [])
+      setPendingPayments((pending || []) as PendingPayment[])
 
-      // No-show: bookings with pending payment older than 24h
-      const now = new Date()
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-      const noShowList = bookingsData?.filter(b => {
-        const created = new Date(b.created_at)
-        return created < yesterday && !payments?.some(p => p.booking_id === b.id)
-      }) || []
-      setNoShow(noShowList)
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      setNoShow(
+        normalizedBookings.filter((booking) => {
+          const created = new Date(booking.created_at)
+          return created < yesterday && !completedPayments.some((payment) => payment.booking_id === booking.id)
+        })
+      )
     }
+
     fetchData()
   }, [])
 
+  const totalBookings = bookings.length
   const conversionRate = totalBookings > 0 ? ((paidBookings / totalBookings) * 100).toFixed(1) : '0'
 
   return (
-    <div className="min-h-screen p-4 bg-gray-100 md:p-8">
-      <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white p-4 rounded shadow">
-          <h2 className="text-xl font-semibold">Total Revenue</h2>
-          <p className="text-2xl">{revenue} AED</p>
+    <main className="kx-shell">
+      <section className="kx-dashboard">
+        <header className="kx-dashboard-header">
+          <div>
+            <p className="kx-eyebrow">Kaizrug Command Ledger</p>
+            <h1 className="kx-dashboard-title">Bookings, money, recovery.</h1>
+          </div>
+          <p className="kx-copy max-w-md">
+            A calm operating board for paid career sessions. Old-school ledger discipline,
+            modern funnel intelligence.
+          </p>
+        </header>
+
+        <div className="kx-dashboard-grid">
+          <article className="kx-dashboard-card">
+            <span className="kx-stat-label">Total Revenue</span>
+            <strong className="kx-stat-value">{revenue} AED</strong>
+          </article>
+          <article className="kx-dashboard-card">
+            <span className="kx-stat-label">Total Bookings</span>
+            <strong className="kx-stat-value">{totalBookings}</strong>
+          </article>
+          <article className="kx-dashboard-card">
+            <span className="kx-stat-label">Conversion Rate</span>
+            <strong className="kx-stat-value">{conversionRate}%</strong>
+          </article>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <h2 className="text-xl font-semibold">Total Bookings</h2>
-          <p className="text-2xl">{totalBookings}</p>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <section className="kx-dashboard-card">
+            <h2 className="text-2xl">Pending Payments</h2>
+            <div className="kx-list">
+              {pendingPayments.length === 0 ? (
+                <p className="kx-list-item">No pending payments.</p>
+              ) : (
+                pendingPayments.map((payment) => (
+                  <p key={payment.id} className="kx-list-item">
+                    {serviceName(payment.bookings)} - {payment.amount} AED - {payment.status}
+                  </p>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="kx-dashboard-card">
+            <h2 className="text-2xl">No-Show Recovery</h2>
+            <div className="kx-list">
+              {noShow.length === 0 ? (
+                <p className="kx-list-item">No recovery queue yet.</p>
+              ) : (
+                noShow.map((booking) => (
+                  <p key={booking.id} className="kx-list-item">
+                    {serviceName(booking)} - {booking.date}
+                  </p>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="kx-dashboard-card">
+            <h2 className="text-2xl">All Bookings</h2>
+            <div className="kx-list">
+              {bookings.length === 0 ? (
+                <p className="kx-list-item">No bookings loaded.</p>
+              ) : (
+                bookings.map((booking) => (
+                  <p key={booking.id} className="kx-list-item">
+                    {serviceName(booking)} - {booking.date} - {booking.status}
+                  </p>
+                ))
+              )}
+            </div>
+          </section>
         </div>
-        <div className="bg-white p-4 rounded shadow">
-          <h2 className="text-xl font-semibold">Conversion Rate</h2>
-          <p className="text-2xl">{conversionRate}%</p>
-        </div>
-      </div>
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Pending Payments</h2>
-        <ul className="bg-white p-4 rounded shadow">
-          {pendingPayments.map(p => (
-            <li key={p.id} className="mb-2">{p.bookings?.services?.name} - {p.amount} AED - {p.status}</li>
-          ))}
-        </ul>
-      </div>
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">No-Show Recovery (Follow up needed)</h2>
-        <ul className="bg-white p-4 rounded shadow">
-          {noShow.map(b => (
-            <li key={b.id} className="mb-2">{b.services.name} - {b.date} - Created: {new Date(b.created_at).toLocaleDateString()}</li>
-          ))}
-        </ul>
-      </div>
-      <div>
-        <h2 className="text-xl font-semibold mb-2">All Bookings</h2>
-        <ul className="bg-white p-4 rounded shadow">
-          {bookings.map(b => (
-            <li key={b.id} className="mb-2">{b.services.name} - {b.date} - {b.status}</li>
-          ))}
-        </ul>
-      </div>
-    </div>
+      </section>
+    </main>
   )
 }
