@@ -151,15 +151,15 @@ export default function Home() {
           <form className="kx-form mt-7" onSubmit={captureLead}>
             <label className="kx-field">
               <span className="kx-label">Name</span>
-              <input className="kx-input" type="text" name="name" required />
+              <input className="kx-input" type="text" name="name" required suppressHydrationWarning />
             </label>
             <label className="kx-field">
               <span className="kx-label">Email</span>
-              <input className="kx-input" type="email" name="email" required />
+              <input className="kx-input" type="email" name="email" required suppressHydrationWarning />
             </label>
             <label className="kx-field">
               <span className="kx-label">Service</span>
-              <select className="kx-input" name="service" required disabled={serviceLoading}>
+              <select className="kx-input" name="service" required disabled={serviceLoading} suppressHydrationWarning>
                 <option value="">Select a service</option>
                 {services.map((service) => (
                   <option key={service.id} value={service.id}>
@@ -168,7 +168,7 @@ export default function Home() {
                 ))}
               </select>
             </label>
-            <button className="kx-button" type="submit" disabled={loading || serviceLoading}>
+            <button className="kx-button" type="submit" disabled={loading || serviceLoading} suppressHydrationWarning>
               {loading ? 'Securing lead...' : serviceLoading ? 'Loading services...' : 'Book a Paid Session'}
             </button>
           </form>
