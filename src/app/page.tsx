@@ -25,6 +25,17 @@ function getErrorMessage(error: unknown) {
   return String(error)
 }
 
+function isDuplicateProfileEmail(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+
+  const record = error as Record<string, unknown>
+  return (
+    record.code === '23505' &&
+    typeof record.message === 'string' &&
+    record.message.includes('profiles_email_key')
+  )
+}
+
 function ConfigRequired() {
   return (
     <main className="kx-shell">
@@ -78,6 +89,11 @@ export default function Home() {
     const email = String(formData.get('email') || '').trim()
     const serviceId = String(formData.get('service') || '')
 
+    if (!name || !email || !serviceId) {
+      alert('Name, email, and service are required.')
+      return
+    }
+
     if (!supabaseConfigured || !supabase) {
       alert('Supabase is not configured. Please update your environment variables.')
       return
@@ -85,14 +101,45 @@ export default function Home() {
 
     setLoading(true)
     try {
-      const { data: user, error } = await supabase
+      const { data: existingUser, error: existingUserError } = await supabase
         .from('profiles')
-        .insert([{ name, email }])
-        .select()
-        .single()
+        .select('id')
+        .eq('email', email)
+        .maybeSingle()
 
-      if (error) throw error
+      if (existingUserError) throw existingUserError
+
+      let user = existingUser
+
+      if (!user) {
+        const { data: newUser, error: createUserError } = await supabase
+          .from('profiles')
+          .insert([{ name, email }])
+          .select('id')
+          .single()
+
+        if (createUserError) {
+          if (!isDuplicateProfileEmail(createUserError)) throw createUserError
+
+          const { data: recoveredUser, error: recoveredUserError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .single()
+
+          if (recoveredUserError) throw recoveredUserError
+          user = recoveredUser
+        } else {
+          user = newUser
+        }
+      }
+
       if (!user?.id) throw new Error('Supabase returned no user id')
+
+      await supabase
+        .from('profiles')
+        .update({ name })
+        .eq('id', user.id)
 
       const params = new URLSearchParams({
         user_id: user.id,
