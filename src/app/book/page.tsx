@@ -1,20 +1,21 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { FormEvent, useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, supabaseConfigured } from '@/lib/supabase'
 
-export default function Book() {
+function BookingForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const userId = searchParams.get('user_id') || ''
+  const serviceId = searchParams.get('service_id') || ''
   const [loading, setLoading] = useState(false)
-  const [userId] = useState(() => {
-    if (typeof window === 'undefined') return ''
-    return new URLSearchParams(window.location.search).get('user_id') || ''
-  })
-  const [serviceId] = useState(() => {
-    if (typeof window === 'undefined') return ''
-    return new URLSearchParams(window.location.search).get('service_id') || ''
-  })
+
+  useEffect(() => {
+    if (!userId || !serviceId) {
+      router.push('/')
+    }
+  }, [userId, serviceId, router])
 
   async function createBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -51,6 +52,28 @@ export default function Book() {
     }
   }
 
+  if (!userId || !serviceId) {
+    return (
+      <div className="kx-alert mt-7">
+        Redirecting to service selection...
+      </div>
+    )
+  }
+
+  return (
+    <form className="kx-form mt-7" onSubmit={createBooking}>
+      <label className="kx-field">
+        <span className="kx-label">Preferred Date</span>
+        <input className="kx-input" type="date" name="date" required />
+      </label>
+      <button className="kx-button" type="submit" disabled={loading}>
+        {loading ? 'Reserving...' : 'Continue to Payment'}
+      </button>
+    </form>
+  )
+}
+
+export default function Book() {
   if (!supabaseConfigured) {
     return (
       <main className="kx-shell">
@@ -74,30 +97,14 @@ export default function Book() {
               to payment so the session is reserved with real commitment.
             </p>
           </div>
-          <div className="kx-panel">
-            <p className="kx-stat-label">Booking discipline</p>
-            <p className="mt-2 text-2xl">No vague promises. A date, a payment, a next action.</p>
-          </div>
         </section>
 
         <aside className="kx-card">
           <p className="kx-eyebrow">Reserve Session</p>
           <h2 className="mt-3 text-3xl leading-tight">Set your preferred session date.</h2>
-          {!userId || !serviceId ? (
-            <div className="kx-alert mt-7">
-              Missing intake details. Return to the first page and select a service.
-            </div>
-          ) : (
-            <form className="kx-form mt-7" onSubmit={createBooking}>
-              <label className="kx-field">
-                <span className="kx-label">Preferred Date</span>
-                <input className="kx-input" type="date" name="date" required />
-              </label>
-              <button className="kx-button" type="submit" disabled={loading}>
-                {loading ? 'Reserving...' : 'Continue to Payment'}
-              </button>
-            </form>
-          )}
+          <Suspense fallback={<div>Loading...</div>}>
+            <BookingForm />
+          </Suspense>
         </aside>
       </div>
     </main>
