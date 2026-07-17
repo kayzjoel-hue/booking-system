@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
 import { supabase, supabaseConfigured } from '@/lib/supabase'
-
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY
-const stripe = stripeSecretKey
-  ? new Stripe(stripeSecretKey, {
-      apiVersion: '2023-08-16',
-    })
-  : null
+import { stripe } from '@/lib/stripe'
 
 const missingConfigResponse = NextResponse.json(
   { error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.' },

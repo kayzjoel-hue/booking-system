@@ -5,7 +5,7 @@ Production path: deploy this app to Vercel as the booking and payment engine.
 Required environment variables:
 
 - NEXT_PUBLIC_SUPABASE_URL
-- NEXT_PUBLIC_SUPABASE_ANON_KEY
+- NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as a fallback)
 - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 - STRIPE_SECRET_KEY
 - ADMIN_API_TOKEN
