@@ -45,8 +45,12 @@ function BookingForm() {
 
       router.push(`/pay?booking_id=${encodeURIComponent(booking.id)}`)
     } catch (err) {
-      console.error(err)
-      alert('Something went wrong. Try again.')
+      console.error('Booking creation failed:', err);
+      if (err instanceof Error) {
+        console.error('Error message:', err.message);
+        console.error('Error stack:', err.stack);
+      }
+      alert('Something went wrong. Try again.');
     } finally {
       setLoading(false)
     }
