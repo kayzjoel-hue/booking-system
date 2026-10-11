@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, supabaseConfigured } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { stripe } from '@/lib/stripe'
 
-const missingConfigResponse = NextResponse.json(
-  { error: 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.' },
-  { status: 500 }
-)
-
 export async function POST(request: NextRequest) {
-  if (!supabaseConfigured || !supabase) return missingConfigResponse
+  if (!supabaseAdmin) {
+    return NextResponse.json(
+      { error: 'Payment persistence is not configured. Set SUPABASE_SERVICE_ROLE_KEY on the server.' },
+      { status: 500 }
+    )
+  }
   if (!stripe) {
     return NextResponse.json(
       { error: 'Stripe is not configured. Set STRIPE_SECRET_KEY.' },
@@ -16,25 +16,72 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { stripe_payment_id } = await request.json()
-  if (!stripe_payment_id || typeof stripe_payment_id !== 'string') {
-    return NextResponse.json({ error: 'stripe_payment_id is required.' }, { status: 400 })
-  }
-
   try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(stripe_payment_id)
+    const body = await request.json()
+    const stripePaymentId = body?.stripe_payment_id
+    if (typeof stripePaymentId !== 'string' || !stripePaymentId.trim()) {
+      return NextResponse.json({ error: 'stripe_payment_id is required.' }, { status: 400 })
+    }
 
-    if (paymentIntent.status === 'succeeded') {
-      await supabase!
-        .from('payments')
-        .update({ status: 'completed' })
-        .eq('stripe_payment_id', paymentIntent.id)
-      return NextResponse.json({ success: true })
-    } else {
+    const paymentIntent = await stripe.paymentIntents.retrieve(stripePaymentId)
+
+    if (paymentIntent.status !== 'succeeded') {
       return NextResponse.json({ success: false, status: paymentIntent.status })
     }
+
+    const bookingId = paymentIntent.metadata?.booking_id
+    if (!bookingId || paymentIntent.currency !== 'aed') {
+      return NextResponse.json(
+        { error: 'Payment metadata or currency does not match the booking flow.' },
+        { status: 409 }
+      )
+    }
+
+    const { data: payment, error: lookupError } = await supabaseAdmin
+      .from('payments')
+      .select('id, booking_id, amount, status')
+      .eq('stripe_payment_id', paymentIntent.id)
+      .maybeSingle()
+
+    if (lookupError) {
+      console.error('Payment lookup failed', lookupError)
+      return NextResponse.json({ error: 'Unable to verify payment record.' }, { status: 500 })
+    }
+    if (!payment) {
+      return NextResponse.json({ error: 'Payment record not found.' }, { status: 404 })
+    }
+    if (payment.booking_id !== bookingId) {
+      return NextResponse.json({ error: 'Payment booking does not match.' }, { status: 409 })
+    }
+
+    const expectedAmount = Math.round(Number(payment.amount) * 100)
+    if (!Number.isFinite(expectedAmount) || expectedAmount <= 0 || paymentIntent.amount !== expectedAmount) {
+      return NextResponse.json({ error: 'Payment amount does not match the stored booking payment.' }, { status: 409 })
+    }
+
+    // A retry after a successful update is safe and does not create another transition.
+    if (payment.status === 'completed') {
+      return NextResponse.json({ success: true, status: 'completed' })
+    }
+
+    const { data: updatedPayment, error: updateError } = await supabaseAdmin
+      .from('payments')
+      .update({ status: 'completed' })
+      .eq('id', payment.id)
+      .select('id')
+      .maybeSingle()
+
+    if (updateError) {
+      console.error('Payment status update failed', updateError)
+      return NextResponse.json({ error: 'Payment was verified but could not be saved.' }, { status: 500 })
+    }
+    if (!updatedPayment) {
+      return NextResponse.json({ error: 'Payment status was not updated.' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, status: 'completed' })
   } catch (error) {
-    console.error(error)
+    console.error('Payment verification failed', error)
     return NextResponse.json({ error: 'Verification failed' }, { status: 500 })
   }
 }
